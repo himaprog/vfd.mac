@@ -1,0 +1,188 @@
+; VFD.MAC
+;
+; Copyright(c) 2021 himaprog
+;
+; Released under the MIT license
+; https://github.com/himaprog/vfd.mac/blob/main/LICENSE
+;
+
+%ifndef DISKSIZE
+%define DISKSIZE 1440
+%warning The macro 'DISKSIZE' is undefined, so assume it is set to 1440.
+%endif
+
+%if DISKSIZE != 1440 && DISKSIZE != 720
+%error The macro 'DISKSIZE' must be defined as 1440 or 720.
+%endif
+
+
+
+%ifndef DISKLABEL_OEM
+%define DISKLABEL_OEM "NO NAME"
+%endif
+%strlen tmpvar DISKLABEL_OEM
+%if tmpvar > 8
+%error The character string of the macro "DISKLABEL_OEM" definition is over 8 bytes.
+%endif
+
+%ifndef DISKLABEL_VOL
+%define DISKLABEL_VOL "NO LABEL"
+%endif
+%strlen tmpvar DISKLABEL_VOL
+%if tmpvar > 11
+%error The character string of the macro "DISKLABEL_VOL" definition is over 11 bytes.
+%endif
+
+%undef tmpvar
+
+
+
+%undef DISKINFO
+%undef BLANK_FAT
+%undef BLANK_ROOT
+%undef BLANK_DATAAREA
+%undef BLANK_DISK
+
+%macro ROOTENTRY_VLABEL 0
+    ;section .data
+	db DISKLABEL_VOL    ; Volume label (11bytes long)
+	db 0x28             ; Attributes
+	db 0                ; SFN lower-case flag (Must be 0.)
+	db 0                ; Crt time sub-second (Not suppot, must be 0.)
+	dw 0                ; Crt time (Not suppot, must be 0.)
+	dw 0                ; Crt date (Not suppot, must be 0.)
+	dw 0                ; Last access date (Not suppot, must be 0.)
+	dw 0                ; First-cluster high (Must be 0.)
+	dw 0                ; Write time
+	dw 0x5288           ; Write date
+	dw 0                ; First-cluster low (Must be 0.)
+	dd 0                ; File size (Must be 0.)
+%endmacro
+
+
+%if DISKSIZE == 1440
+
+%macro DISKINFO 0
+    ;section .data
+	db DISKLABEL_OEM    ; OEM String (8bytes long)
+	times 0x000B-($-$$) db 0x20
+	dw 512              ; Bytes per sector (8bytes long)
+	db 1                ; Sectors per cluster
+	dw 1                ; FAT start sector
+	db 2                ; Number of FATs
+	dw 224              ; Root entries
+	dw 2880             ; Small sectors
+	db 0xF0             ; Media type (hex)
+	dw 9                ; Sectors per FAT
+	dw 18               ; Sectors per track
+	dw 2                ; Heads
+	dd 0                ; Hidden sectors (partitions?)
+	dd 2880             ; Large sectors
+	dw 0                ; Drive (hex) (physical drives)
+	db 0x29             ; Signature (of ext boot record)
+	dd -1               ; Volume ID
+	db DISKLABEL_VOL    ; Volume label (11bytes long)
+	times 0x0036-($-$$) db 0x20
+	db "FAT12   "       ; System string (8bytes long)
+%endmacro
+
+%macro BLANK_FAT 0
+    ;section .data
+	db 0xf0, 0xff, 0xff
+	times 1200h-3 db 0
+%endmacro
+
+%macro BLANK_ROOT 0
+    ;section .data
+	ROOTENTRY_VLABEL
+	times 1C00h db 0
+%endmacro
+
+%macro BLANK_DATAAREA 0
+    ;section .data
+	times 163E00h db 0
+%endmacro
+
+%else    ; DISKSIZE
+
+%macro DISKINFO 0
+    ;section .data
+	db DISKLABEL_OEM    ; OEM String (8bytes long)
+	times 0x000B-($-$$) db 0x20
+	dw 512              ; Bytes per sector (8bytes long)
+	db 1                ; Sectors per cluster
+	dw 1                ; FAT start sector
+	db 2                ; Number of FATs
+	dw 224              ; Root entries
+	dw 1440             ; Small sectors
+	db 0xF0             ; Media type (hex)
+	dw 9                ; Sectors per FAT
+	dw 9                ; Sectors per track
+	dw 2                ; Heads
+	dd 0                ; Hidden sectors (partitions?)
+	dd 2880             ; Large sectors
+	dw 0                ; Drive (hex) (physical drives)
+	db 0x29             ; Signature (of ext boot record)
+	dd -1               ; Volume ID
+	db DISKLABEL_VOL    ; Volume label (11bytes long)
+	times 0x0036-($-$$) db 0x20
+	db "FAT12   "       ; System string (8bytes long)
+%endmacro
+
+%macro BLANK_FAT 0
+    ;section .data
+	db 0xf9, 0xff, 0xff
+	times 600h-3 db 0
+%endmacro
+
+%macro BLANK_ROOT 0
+    ;section .data
+	ROOTENTRY_VLABEL
+	times E00h db 0
+%endmacro
+
+%macro BLANK_DATAAREA 0
+    ;section .data
+	times B3200h db 0
+%endmacro
+
+%endif
+
+%macro BLANK_DISK 0
+%ifndef DEBUG
+	BLANK_FAT
+	BLANK_FAT
+	BLANK_ROOT
+	BLANK_DATAAREA
+%endif
+%endmacro
+
+
+
+%undef MBR_BEGIN
+%macro MBR_BEGIN 0
+%ifndef DEBUG
+    org 7c00h
+%else
+    org 100h
+%endif
+
+    ;section .code
+    cpu 8086
+    MBR:
+	jmp short ..@IplEntry
+	nop
+
+    ..@DiskInfo:
+	DISKINFO
+
+    ;section .code
+    ..@IplEntry:
+%endmacro
+
+%undef MBR_END
+%macro MBR_END 0
+    ;section .data
+	times 0x1FE-($-$$) db 0
+	db 0x55, 0xaa
+%endmacro
