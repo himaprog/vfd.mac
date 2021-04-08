@@ -1,4 +1,4 @@
-; VFD.MAC
+; VFD.MAC  ver1.1.0
 ;
 ; Copyright(c) 2021 himaprog
 ;
@@ -6,166 +6,277 @@
 ; https://github.com/himaprog/vfd.mac/blob/main/LICENSE
 ;
 
-%ifndef DISKSIZE
-%define DISKSIZE 1440
-%warning The macro 'DISKSIZE' is undefined, so assume it is set to 1440.
+; Source description
+; ----------
+:
+: This is a macro file for NASM to make it easier to create a virtual FD image.
+;
+; VFD_DISKSIZE:
+; Specifies the size of the disk. It's 1440 or 720. (default = 1440)
+;
+; VFD_DISKLABEL_OEM:
+; Specify the OEM label name of the disk using 8 single-byte characters or less. (default = "NO NAME")
+;
+; VFD_DISKLABEL_VOL:
+; Specify the volume label name of the disk using 11 single-byte characters or less. (default = "NO LABEL")
+;
+; VFD_DISKDATE:
+; Specify the date the disk was created as a decimal or hexadecimal number. (default = 0, same as 1980/1/1.)
+; If you want to specify the correct value, follow the floppy disk recording format.
+;
+; VFD_DISKTIME:
+; Specify the time the disk was created as a decimal or hexadecimal number. (default = 0, same as 00:00:00.)
+; If you want to specify the correct value, follow the floppy disk recording format.
+;
+; VFD_DISKID:
+; Specify the volume serial number of the disk as a decimal or hexadecimal number. (default = 0, same as 0xFFFFFFFF.)
+;
+; VFD_DISKINFO:
+; Disk information for the Master Boot Record.
+;
+; VFD_FAT_TERM:
+; Indicates the end of one FAT on disk. Use as needed.
+; However, it cannot be used with VFD_BLANK_FAT.
+;
+; VFD_ROOT_TERM:
+; Indicates the end of the root directory entry. Use as needed.
+; However, it cannot be used with VFD_BLANK_ROOT.
+;
+; VFD_DATAAREA_TERM:
+; Indicates the end of the data area on the disk. Use as needed.
+; However, it cannot be used with VFD_BLANK_DATAAREA.
+;
+; VFD_BLANK_FAT:
+; Indicates that the FAT of the disk is empty. Use as needed.
+; However, it cannot be used with VFD_FAT_TERM.
+;
+; VFD_BLANK_ROOT:
+; Indicates that the disk root directory entry is empty. Use as needed.
+; However, it cannot be used with VFD_ROOT_TERM.
+;
+; VFD_BLANK_DATAAREA:
+; Indicates that the data area on the disk is empty. Use as needed.
+; However, it cannot be used with VFD_DATAAREA_TERM.
+;
+; VFD_BLANK_DISK:
+; Indicates that the non-MBR area of the disk is empty. Use as needed.
+; This is the same as specifying VFD_BLANK_FAT, VFD_BLANK_ROOT, and VFD_BLANK_DATAAREA together.
+; For development convenience, this macro does nothing if a DEBUG macro is defined. As a result, it is possible to create a binary only for MBR and debug IPL on DOS.
+;
+; VFD_ROOT_VLABEL:
+; Indicates the volume label information in the FAT area of the disk. Use as needed.
+; If you create your own FAT data, be sure to place it at the beginning of the area.
+; However, it cannot be used with VFD_BLANK_FAT.
+;
+; VFD_IPL_ORG:
+; Indicates the memory address at runtime. Use as needed.
+; This value is set automatically depending on whether the DEBUG macro is defined or not.
+; Use this when you want to get the IPL start memory address while the program is running.
+;
+; VFD_IPL_BEGIN:
+; Indicates the beginning of the IPL to be placed in the MBR area.
+;
+; VFD_IPL_END:
+; Indicates the end of the IPL to be placed in the MBR area.
+;
+; VFD_MBR_ORG:
+; VFD_MBR_BEGIN:
+; VFD_MBR_END:
+; It is left for compatibility with the previous version. It may be removed in a future version.
+;
+;
+
+
+%ifndef VFD_DISKSIZE
+%define VFD_DISKSIZE 1440
+;%warning The macro 'VFD_DISKSIZE' is undefined, so assume it is set to 1440.
 %endif
 
-%if DISKSIZE != 1440 && DISKSIZE != 720
-%error The macro 'DISKSIZE' must be defined as 1440 or 720.
+%if VFD_DISKSIZE != 1440 && VFD_DISKSIZE != 720
+%error The macro 'VFD_DISKSIZE' must be defined as 1440 or 720.
+%endif
+
+%ifndef VFD_DISKLABEL_OEM
+%define VFD_DISKLABEL_OEM "NO NAME"
+%endif
+%strlen vfd_tmpvar VFD_DISKLABEL_OEM
+%if vfd_tmpvar > 8
+%error The character string of the macro "VFD_DISKLABEL_OEM" definition is over 8 bytes.
+%endif
+
+%ifndef VFD_DISKLABEL_VOL
+%define VFD_DISKLABEL_VOL "NO LABEL"
+%endif
+%strlen vfd_tmpvar VFD_DISKLABEL_VOL
+%if vfd_tmpvar > 11
+%error The character string of the macro "VFD_DISKLABEL_VOL" definition is over 11 bytes.
 %endif
 
 
 
-%ifndef DISKLABEL_OEM
-%define DISKLABEL_OEM "NO NAME"
-%endif
-%strlen tmpvar DISKLABEL_OEM
-%if tmpvar > 8
-%error The character string of the macro "DISKLABEL_OEM" definition is over 8 bytes.
-%endif
-
-%ifndef DISKLABEL_VOL
-%define DISKLABEL_VOL "NO LABEL"
-%endif
-%strlen tmpvar DISKLABEL_VOL
-%if tmpvar > 11
-%error The character string of the macro "DISKLABEL_VOL" definition is over 11 bytes.
-%endif
-
-%undef tmpvar
-
-
-
-%undef DISKINFO
-%undef BLANK_FAT
-%undef BLANK_ROOT
-%undef BLANK_DATAAREA
-%undef BLANK_DISK
-
-%macro ROOTENTRY_VLABEL 0
+%undef VFD_ROOT_VLABEL
+%macro VFD_ROOT_VLABEL 0
     ;section .data
-	db DISKLABEL_VOL    ; Volume label (11bytes long)
-	db 0x28             ; Attributes
-	db 0                ; SFN lower-case flag (Must be 0.)
-	db 0                ; Crt time sub-second (Not suppot, must be 0.)
-	dw 0                ; Crt time (Not suppot, must be 0.)
-	dw 0                ; Crt date (Not suppot, must be 0.)
-	dw 0                ; Last access date (Not suppot, must be 0.)
-	dw 0                ; First-cluster high (Must be 0.)
-	dw 0                ; Write time
-	dw 0x5288           ; Write date
-	dw 0                ; First-cluster low (Must be 0.)
-	dd 0                ; File size (Must be 0.)
-%endmacro
-
-
-%if DISKSIZE == 1440
-
-%macro DISKINFO 0
-    ;section .data
-	db DISKLABEL_OEM    ; OEM String (8bytes long)
-	times 0x000B-($-$$) db 0x20
-	dw 512              ; Bytes per sector (8bytes long)
-	db 1                ; Sectors per cluster
-	dw 1                ; FAT start sector
-	db 2                ; Number of FATs
-	dw 224              ; Root entries
-	dw 2880             ; Small sectors
-	db 0xF0             ; Media type (hex)
-	dw 9                ; Sectors per FAT
-	dw 18               ; Sectors per track
-	dw 2                ; Heads
-	dd 0                ; Hidden sectors (partitions?)
-	dd 2880             ; Large sectors
-	dw 0                ; Drive (hex) (physical drives)
-	db 0x29             ; Signature (of ext boot record)
-	dd -1               ; Volume ID
-	db DISKLABEL_VOL    ; Volume label (11bytes long)
-	times 0x0036-($-$$) db 0x20
-	db "FAT12   "       ; System string (8bytes long)
-%endmacro
-
-%macro BLANK_FAT 0
-    ;section .data
-	db 0xf0, 0xff, 0xff
-	times 1200h-3 db 0
-%endmacro
-
-%macro BLANK_ROOT 0
-    ;section .data
-	ROOTENTRY_VLABEL
-	times 1C00h db 0
-%endmacro
-
-%macro BLANK_DATAAREA 0
-    ;section .data
-	times 163E00h db 0
-%endmacro
-
-%else    ; DISKSIZE
-
-%macro DISKINFO 0
-    ;section .data
-	db DISKLABEL_OEM    ; OEM String (8bytes long)
-	times 0x000B-($-$$) db 0x20
-	dw 512              ; Bytes per sector (8bytes long)
-	db 1                ; Sectors per cluster
-	dw 1                ; FAT start sector
-	db 2                ; Number of FATs
-	dw 224              ; Root entries
-	dw 1440             ; Small sectors
-	db 0xF0             ; Media type (hex)
-	dw 9                ; Sectors per FAT
-	dw 9                ; Sectors per track
-	dw 2                ; Heads
-	dd 0                ; Hidden sectors (partitions?)
-	dd 2880             ; Large sectors
-	dw 0                ; Drive (hex) (physical drives)
-	db 0x29             ; Signature (of ext boot record)
-	dd -1               ; Volume ID
-	db DISKLABEL_VOL    ; Volume label (11bytes long)
-	times 0x0036-($-$$) db 0x20
-	db "FAT12   "       ; System string (8bytes long)
-%endmacro
-
-%macro BLANK_FAT 0
-    ;section .data
-	db 0xf9, 0xff, 0xff
-	times 600h-3 db 0
-%endmacro
-
-%macro BLANK_ROOT 0
-    ;section .data
-	ROOTENTRY_VLABEL
-	times E00h db 0
-%endmacro
-
-%macro BLANK_DATAAREA 0
-    ;section .data
-	times B3200h db 0
-%endmacro
-
-%endif
-
-%macro BLANK_DISK 0
-%ifndef DEBUG
-	BLANK_FAT
-	BLANK_FAT
-	BLANK_ROOT
-	BLANK_DATAAREA
-%endif
-%endmacro
-
-
-
-%undef MBR_BEGIN
-%macro MBR_BEGIN 0
-%ifndef DEBUG
-    org 7c00h
+	db VFD_DISKLABEL_VOL    ; Volume label (11bytes long)
+%strlen vfd_tmpvar VFD_DISKLABEL_VOL
+	times 11-vfd_tmpvar db 0x20
+	db 0x28                 ; Attributes
+	db 0                    ; SFN lower-case flag (Must be 0.)
+	db 0                    ; Crt time sub-second (Not suppot, must be 0.)
+	dw 0                    ; Crt time (Not suppot, must be 0.)
+	dw 0                    ; Crt date (Not suppot, must be 0.)
+	dw 0                    ; Last access date (Not suppot, must be 0.)
+	dw 0                    ; First-cluster high (Must be 0.)
+%ifnum VFD_DISKTIME < 0xFFFF    ; Write time
+	dw VFD_DISKTIME
 %else
-    org 100h
+	dw 0
 %endif
+%ifnum VFD_DISKDATE < 0xFFFF    ; Write date
+	dw VFD_DISKDATE
+%else
+	dw 0
+%endif
+	dw 0                    ; First-cluster low (Must be 0.)
+	dd 0                    ; File size (Must be 0.)
+%endmacro
+
+%undef VFD_DISKINFO
+%macro VFD_DISKINFO 0
+    ;section .data
+%if VFD_DISKSIZE == 1440
+%define vfd_sec_total 2880
+%define vfd_sec_track 18
+%else
+%define vfd_sec_total 1440
+%define vfd_sec_track 9
+%endif
+	db VFD_DISKLABEL_OEM    ; OEM String (8bytes long)
+%strlen vfd_tmpvar VFD_DISKLABEL_OEM
+	times 8-vfd_tmpvar db 0x20
+	dw 512                  ; Bytes per sector (8bytes long)
+	db 1                    ; Sectors per cluster
+	dw 1                    ; FAT start sector
+	db 2                    ; Number of FATs
+	dw 224                  ; Root entries
+	dw vfd_sec_total        ; Small sectors
+	db 0xF0                 ; Media type (hex)
+	dw 9                    ; Sectors per FAT
+	dw vfd_sec_track        ; Sectors per track
+	dw 2                    ; Heads
+	dd 0                    ; Hidden sectors (partitions?)
+	dd 2880                 ; Large sectors
+	dw 0                    ; Drive (hex) (physical drives)
+	db 0x29                 ; Signature (of ext boot record)
+%ifnum VFD_DISKID < 0xFFFFFFFF  ; Volume ID
+	dd VFD_DISKID
+%else
+	dd -1
+%endif
+	db VFD_DISKLABEL_VOL    ; Volume label (11bytes long)
+%strlen vfd_tmpvar VFD_DISKLABEL_VOL
+	times 11-vfd_tmpvar db 0x20
+	db "FAT12   "           ; System string (8bytes long)
+%undef vfd_sec_total
+%undef vfd_sec_track
+%endmacro
+
+%undef VFD_FAT_TERM
+%macro VFD_FAT_TERM 0-1 0
+    ;section .data
+%if VFD_DISKSIZE == 1440
+%define vfd_tmpvar 0x1200
+%else
+%define vfd_tmpvar 0x600
+%endif
+%ifnum %1 <= vfd_tmpvar
+	times vfd_tmpvar-%1 db 0
+%else
+%error The argument for the macro'VFD_FAT_TERM' is invalid.
+%endif
+%endmacro
+
+%undef VFD_ROOT_TERM
+%macro VFD_ROOT_TERM 0-1 0
+    ;section .data
+%if VFD_DISKSIZE == 1440
+%define vfd_tmpvar 0x1C00
+%else
+%define vfd_tmpvar 0xE00
+%endif
+%ifnum %1 <= vfd_tmpvar
+	times vfd_tmpvar-%1 db 0
+%else
+%error The argument for the macro'VFD_ROOT_TERM' is invalid.
+%endif
+%endmacro
+
+%undef VFD_DATAAREA_TERM
+%macro VFD_DATAAREA_TERM 0-2 0, 0xF6
+    ;section .data
+%if VFD_DISKSIZE == 1440
+%define vfd_tmpvar 0x163E00
+%else
+%define vfd_tmpvar 0xB2400
+%endif
+%ifnum %1 <= vfd_tmpvar
+%ifnum %2 <= 0xFF
+%define vfd_tmpvar2 %2
+%else
+%define vfd_tmpvar2 0xF6
+%endif
+	times vfd_tmpvar-%1 db vfd_tmpvar2
+%else
+%error The argument for the macro'VFD_DATAAREA_TERM' is invalid.
+%endif
+%endmacro
+
+%undef VFD_BLANK_FAT
+%macro VFD_BLANK_FAT 0
+    ;section .data
+%rep 2
+%if VFD_DISKSIZE == 1440
+	db 0xF0, 0xFF, 0xFF
+%else
+	db 0xF9, 0xFF, 0xFF
+%endif
+	VFD_FAT_TERM 3
+%endrep
+%endmacro
+
+%undef VFD_BLANK_ROOT
+%macro VFD_BLANK_ROOT 0-2 0, 0
+    ;section .data
+	VFD_ROOT_VLABEL
+	VFD_ROOT_TERM 32        ; arg == sizeof VFD_ROOT_VLABEL
+%endmacro
+
+%undef VFD_BLANK_DATAAREA
+%macro VFD_BLANK_DATAAREA 0
+    ;section .data
+	VFD_DATAAREA_TERM
+%endmacro
+
+%undef VFD_BLANK_DISK
+%macro VFD_BLANK_DISK 0
+%ifndef DEBUG
+	VFD_BLANK_FAT
+	VFD_BLANK_ROOT
+	VFD_BLANK_DATAAREA
+%endif
+%endmacro
+
+
+
+%ifndef DEBUG
+%define VFD_IPL_ORG 0x7C00
+%else
+%define VFD_IPL_ORG 0x100
+%endif
+
+%undef VFD_IPL_BEGIN
+%macro VFD_IPL_BEGIN 0
+    org VFD_IPL_ORG
 
     ;section .code
     cpu 8086
@@ -174,15 +285,23 @@
 	nop
 
     ..@DiskInfo:
-	DISKINFO
+	VFD_DISKINFO
 
     ;section .code
     ..@IplEntry:
 %endmacro
 
-%undef MBR_END
-%macro MBR_END 0
+%undef VFD_IPL_END
+%macro VFD_IPL_END 0
     ;section .data
-	times 0x1FE-($-$$) db 0
-	db 0x55, 0xaa
+	times 1FEh-($-$$) db 0
+	db 0x55, 0xAA
 %endmacro
+
+%define VFD_MBR_BEGIN VFD_IPL_BEGIN
+%define VFD_MBR_END   VFD_IPL_END
+%define VFD_MBR_ORG   VFD_IPL_ORG
+
+
+
+%undef vfd_tmpvar
