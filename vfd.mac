@@ -1,4 +1,4 @@
-; VFD.MAC  ver1.1.0
+; VFD.MAC  ver1.1.2
 ;
 ; Copyright(c) 2021 himaprog
 ;
@@ -8,8 +8,14 @@
 
 ; Source description
 ; ----------
-:
-: This is a macro file for NASM to make it easier to create a virtual FD image.
+;
+; This is a macro file for NASM to make it easier to create a virtual FD image.
+;
+;
+; Specifying a value
+; ----------
+;
+; Specify values for these macros to define them. Please use it if necessary.
 ;
 ; VFD_DISKSIZE:
 ; Specifies the size of the disk. It's 1440 or 720. (default = 1440)
@@ -31,85 +37,90 @@
 ; VFD_DISKID:
 ; Specify the volume serial number of the disk as a decimal or hexadecimal number. (default = 0, same as 0xFFFFFFFF.)
 ;
+;
+; Macro related to FD image configuration
+; ----------
+;
+; Use these macros to indicate the configuration of your own virtual FD image.
+;
 ; VFD_DISKINFO:
 ; Disk information for the Master Boot Record.
 ;
 ; VFD_FAT_TERM:
-; Indicates the end of one FAT on disk. Use as needed.
-; However, it cannot be used with VFD_BLANK_FAT.
-;
 ; VFD_ROOT_TERM:
-; Indicates the end of the root directory entry. Use as needed.
-; However, it cannot be used with VFD_BLANK_ROOT.
-;
 ; VFD_DATAAREA_TERM:
-; Indicates the end of the data area on the disk. Use as needed.
-; However, it cannot be used with VFD_BLANK_DATAAREA.
+; Each of these macros marks the end of the corresponding disk space. Please use it if necessary.
+; Please note that the placement of macros in the code is directly reflected in the FD image you create.
+; When using these macros, specify the number of bytes of self-made data in the disk area as an argument. If not specified, it is the same as specifying the maximum size required for the area without self-made data.
+; The VFD_DATAAREA_TERM macro can also specify the data to be written as a decimal value from 0 to 255 or a 1-byte hexadecimal value as the second argument. If specified, the remaining area after the self-made data will be filled with the specified value. (Default = 0xF6, same as standard DOS format)
+; However, each of these macros cannot be explicitly used in your own code along with the VFD_BLANK_xx macros in the associated disk space.
 ;
 ; VFD_BLANK_FAT:
-; Indicates that the FAT of the disk is empty. Use as needed.
-; However, it cannot be used with VFD_FAT_TERM.
-;
 ; VFD_BLANK_ROOT:
-; Indicates that the disk root directory entry is empty. Use as needed.
-; However, it cannot be used with VFD_ROOT_TERM.
-;
 ; VFD_BLANK_DATAAREA:
-; Indicates that the data area on the disk is empty. Use as needed.
-; However, it cannot be used with VFD_DATAAREA_TERM.
+; Each of these macros indicates that the entire corresponding area is empty. Please use it if necessary.
+; Please note that the placement of macros in the code is directly reflected in the FD image you create.
+; However, each of these macros contains a VFD_xx_TERM macro for the associated disk space, so you cannot explicitly use them together in your code.
+; The VFD_ROOT_VLABEL macro is included in the VFD_BLANK_ROOT macro, so there is no need to prepare it separately.
 ;
 ; VFD_BLANK_DISK:
-; Indicates that the non-MBR area of the disk is empty. Use as needed.
-; This is the same as specifying VFD_BLANK_FAT, VFD_BLANK_ROOT, and VFD_BLANK_DATAAREA together.
-; For development convenience, this macro does nothing if a DEBUG macro is defined. As a result, it is possible to create a binary only for MBR and debug IPL on DOS.
+; Indicates that the non-MBR area of the disk is empty. Please use it if necessary.
+; Using this macro is the same as using all other VFD_BLANK_xx macros together. Therefore, it cannot be used explicitly with these macros in your code.
 ;
 ; VFD_ROOT_VLABEL:
-; Indicates the volume label information in the FAT area of the disk. Use as needed.
+; Indicates the volume label information in the FAT area of the disk. Please use it if necessary.
 ; If you create your own FAT data, be sure to place it at the beginning of the area.
-; However, it cannot be used with VFD_BLANK_FAT.
+; This macro cannot be used with the VFD_BLANK_ROOT macro.
 ;
 ; VFD_IPL_ORG:
-; Indicates the memory address at runtime. Use as needed.
-; This value is set automatically depending on whether the DEBUG macro is defined or not.
-; Use this when you want to get the IPL start memory address while the program is running.
+; Indicates the memory address where the IPL code will be placed at run time.
+; This value is set automatically depending on whether the DEBUG macro is defined.
 ;
 ; VFD_IPL_BEGIN:
-; Indicates the beginning of the IPL to be placed in the MBR area.
-;
 ; VFD_IPL_END:
-; Indicates the end of the IPL to be placed in the MBR area.
+; Indicates the start and end of the IPL code placed in the MBR area. Write the IPL code between these macros, including the data you want to use.
+; By using these macros, you can focus on coding the IPL without having to write the rest of the MBR, and you can check if the IPL code fits in the MBR size.
+; Note that the VFD_DISKINFO macro is included in these macros and does not need to be prepared separately.
+;
+; VFD_MBR_HEAD: (label name)
+; Indicates the start position of the MBR area. Use it as needed, such as when acquiring a memory address while the program is running.
+; This is usually the same value as the VFD_IPL_ORG macro.
 ;
 ; VFD_MBR_ORG:
 ; VFD_MBR_BEGIN:
 ; VFD_MBR_END:
-; It is left for compatibility with the previous version. It may be removed in a future version.
+; MBR: (label name)
+; It is left for compatibility with older code. It may be deleted in the future.
 ;
 ;
+
 
 
 %ifndef VFD_DISKSIZE
 %define VFD_DISKSIZE 1440
-;%warning The macro 'VFD_DISKSIZE' is undefined, so assume it is set to 1440.
+;%warning Since the VFD_DISKSIZE macro is undefined, it is assumed that 1440 is specified as the value.
 %endif
 
 %if VFD_DISKSIZE != 1440 && VFD_DISKSIZE != 720
 %error The macro 'VFD_DISKSIZE' must be defined as 1440 or 720.
 %endif
 
-%ifndef VFD_DISKLABEL_OEM
-%define VFD_DISKLABEL_OEM "NO NAME"
-%endif
+%ifstr VFD_DISKLABEL_OEM
 %strlen vfd_tmpvar VFD_DISKLABEL_OEM
 %if vfd_tmpvar > 8
-%error The character string of the macro "VFD_DISKLABEL_OEM" definition is over 8 bytes.
+%error The length of the string defined by the VFD_DISKLABEL_OEM macro exceeds 8 bytes.
+%endif
+%else
+%define VFD_DISKLABEL_OEM "NO NAME"
 %endif
 
-%ifndef VFD_DISKLABEL_VOL
-%define VFD_DISKLABEL_VOL "NO LABEL"
-%endif
+%ifstr VFD_DISKLABEL_VOL
 %strlen vfd_tmpvar VFD_DISKLABEL_VOL
 %if vfd_tmpvar > 11
-%error The character string of the macro "VFD_DISKLABEL_VOL" definition is over 11 bytes.
+%error The length of the string defined by the VFD_DISKLABEL_VOL macro exceeds 11 bytes.
+%endif
+%else
+%define VFD_DISKLABEL_VOL "NO LABEL"
 %endif
 
 
@@ -144,28 +155,32 @@
 %undef VFD_DISKINFO
 %macro VFD_DISKINFO 0
     ;section .data
-%if VFD_DISKSIZE == 1440
-%define vfd_sec_total 2880
-%define vfd_sec_track 18
-%else
-%define vfd_sec_total 1440
-%define vfd_sec_track 9
-%endif
 	db VFD_DISKLABEL_OEM    ; OEM String (8bytes long)
 %strlen vfd_tmpvar VFD_DISKLABEL_OEM
 	times 8-vfd_tmpvar db 0x20
 	dw 512                  ; Bytes per sector (8bytes long)
+%if VFD_DISKSIZE == 1440
 	db 1                    ; Sectors per cluster
 	dw 1                    ; FAT start sector
 	db 2                    ; Number of FATs
 	dw 224                  ; Root entries
-	dw vfd_sec_total        ; Small sectors
+	dw 2880                 ; Small sectors
 	db 0xF0                 ; Media type (hex)
 	dw 9                    ; Sectors per FAT
-	dw vfd_sec_track        ; Sectors per track
+	dw 18                   ; Sectors per track
+%else
+	db 2                    ; Sectors per cluster
+	dw 1                    ; FAT start sector
+	db 2                    ; Number of FATs
+	dw 112                  ; Root entries
+	dw 1440                 ; Small sectors
+	db 0xF9                 ; Media type (hex)
+	dw 3                    ; Sectors per FAT
+	dw 9                    ; Sectors per track
+%endif
 	dw 2                    ; Heads
 	dd 0                    ; Hidden sectors (partitions?)
-	dd 2880                 ; Large sectors
+	dd 0                    ; Large sectors
 	dw 0                    ; Drive (hex) (physical drives)
 	db 0x29                 ; Signature (of ext boot record)
 %ifnum VFD_DISKID < 0xFFFFFFFF  ; Volume ID
@@ -177,8 +192,6 @@
 %strlen vfd_tmpvar VFD_DISKLABEL_VOL
 	times 11-vfd_tmpvar db 0x20
 	db "FAT12   "           ; System string (8bytes long)
-%undef vfd_sec_total
-%undef vfd_sec_track
 %endmacro
 
 %undef VFD_FAT_TERM
@@ -192,7 +205,7 @@
 %ifnum %1 <= vfd_tmpvar
 	times vfd_tmpvar-%1 db 0
 %else
-%error The argument for the macro'VFD_FAT_TERM' is invalid.
+%error The argument of the VFD_FAT_TERM macro is invalid.
 %endif
 %endmacro
 
@@ -207,7 +220,7 @@
 %ifnum %1 <= vfd_tmpvar
 	times vfd_tmpvar-%1 db 0
 %else
-%error The argument for the macro'VFD_ROOT_TERM' is invalid.
+%error The argument of the VFD_ROOT_TERM macro is invalid.
 %endif
 %endmacro
 
@@ -223,11 +236,11 @@
 %ifnum %2 <= 0xFF
 %define vfd_tmpvar2 %2
 %else
-%define vfd_tmpvar2 0xF6
+%error The second argument of the VFD_DATAAREA_TERM macro is invalid.
 %endif
 	times vfd_tmpvar-%1 db vfd_tmpvar2
 %else
-%error The argument for the macro'VFD_DATAAREA_TERM' is invalid.
+%error The first argument of the VFD_DATAAREA_TERM macro is invalid.
 %endif
 %endmacro
 
@@ -245,7 +258,7 @@
 %endmacro
 
 %undef VFD_BLANK_ROOT
-%macro VFD_BLANK_ROOT 0-2 0, 0
+%macro VFD_BLANK_ROOT 0
     ;section .data
 	VFD_ROOT_VLABEL
 	VFD_ROOT_TERM 32        ; arg == sizeof VFD_ROOT_VLABEL
@@ -259,12 +272,12 @@
 
 %undef VFD_BLANK_DISK
 %macro VFD_BLANK_DISK 0
-%ifndef DEBUG
 	VFD_BLANK_FAT
 	VFD_BLANK_ROOT
 	VFD_BLANK_DATAAREA
-%endif
 %endmacro
+
+%undef vfd_tmpvar
 
 
 
@@ -280,7 +293,7 @@
 
     ;section .code
     cpu 8086
-    MBR:
+    VFD_MBR_HEAD:
 	jmp short ..@IplEntry
 	nop
 
@@ -298,10 +311,7 @@
 	db 0x55, 0xAA
 %endmacro
 
+%define MBR           VFD_MBR_HEAD
 %define VFD_MBR_BEGIN VFD_IPL_BEGIN
 %define VFD_MBR_END   VFD_IPL_END
 %define VFD_MBR_ORG   VFD_IPL_ORG
-
-
-
-%undef vfd_tmpvar
